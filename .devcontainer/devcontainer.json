@@ -1,0 +1,16 @@
+{
+  "name": "Unlearning Simulations",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python"
+      ]
+    }
+  },
+  "forwardPorts": [],
+  "postCreateCommand": "echo 'Unlearning Simulation environment is configured.'",
+  "remoteUser": "vscode"
+}

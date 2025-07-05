@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.pyc
+.env
+
+# VSCode
+.vscode/
+
+# Results - Don't commit large result files
+results/*
+!results/.gitkeep
