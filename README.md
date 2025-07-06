@@ -4,11 +4,11 @@ This repository provides a testing suite to analyze the performance and fidelity
 ## Features
 Algorithm Implementation: Includes a Python implementation of an incremental ForgettableERM class.
 
-Simulation Suite: A testing script to run multiple simulations, comparing incremental updates against full retraining.
+*Simulation Suite:* A testing script to run multiple simulations, comparing incremental updates against full retraining.
 
-Statistical Analysis: Automatically calculates confidence intervals for the error between the methods.
+*Statistical Analysis:* Automatically calculates confidence intervals for the error between the methods.
 
-Reproducible Environment: Configured with a Dockerfile and devcontainer.json for one-click setup in GitHub Codespaces or local Docker.
+*Reproducible Environment:* Configured with a Dockerfile and devcontainer.json for one-click setup in GitHub Codespaces or local Docker.
 
 ## Repository Structure
 ```
@@ -29,7 +29,7 @@ Reproducible Environment: Configured with a Dockerfile and devcontainer.json for
 ## Getting Started
 You can run this project in two ways: using GitHub Codespaces (recommended for ease of use) or by building the Docker container locally.
 
-Option 1: GitHub Codespaces (Recommended)
+*Option 1:* GitHub Codespaces (Recommended)
 
 Navigate to the main page of this repository on GitHub.
 
@@ -39,7 +39,7 @@ Select the Codespaces tab and click Create codespace on main.
 
 GitHub will automatically build the containerized environment and open it in a web-based VS Code editor. No local setup is required.
 
-Option 2: Local Docker Environment
+*Option 2:* Local Docker Environment
 
 ### Prerequisites: 
 You must have Docker installed on your local machine.

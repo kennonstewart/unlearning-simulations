@@ -78,14 +78,29 @@ if __name__ == "__main__":
     print(f"95% Confidence Interval: [{ci[0]:.2f}%, {ci[1]:.2f}%]")
 
     # --- Save results to /results/ directory ---
-    results_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'results')
-    os.makedirs(results_dir, exist_ok=True)
+    results_dir = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        'results'
+    )
+    os.makedirs(
+        results_dir, 
+        exist_ok = True
+        )
 
     # Save errors as .npy
-    np.save(os.path.join(results_dir, 'errors.npy'), np.array(errors))
+    np.save(
+        os.path.join(
+            results_dir, 
+            'errors.npy'
+        ), 
+        np.array(errors)
+    )
 
     # Save summary statistics as .txt
-    summary_path = os.path.join(results_dir, 'summary.txt')
+    summary_path = os.path.join(
+        results_dir, 
+        'summary.txt'
+    )
     with open(summary_path, 'w') as f:
         f.write("--- Simulation Analysis ---\n")
         f.write(f"Ran {len(errors)} successful simulations.\n")
