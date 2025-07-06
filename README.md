@@ -33,7 +33,7 @@ You can run this project in two ways: using GitHub Codespaces (recommended for e
 
 Navigate to the main page of this repository on GitHub.
 
-Click the green < > Code button.
+Click the green `< > Code` button.
 
 Select the Codespaces tab and click Create codespace on main.
 
