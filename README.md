@@ -29,7 +29,7 @@ Algorithm Implementation: Includes a Python implementation of an incremental For
 ## Getting Started
 You can run this project in two ways: using GitHub Codespaces (recommended for ease of use) or by building the Docker container locally.
 
-*Option 1:* GitHub Codespaces (Recommended)
+### *Option 1:* GitHub Codespaces (Recommended)
 
 Navigate to the main page of this repository on GitHub.
 
@@ -39,9 +39,9 @@ Select the Codespaces tab and click Create codespace on main.
 
 GitHub will automatically build the containerized environment and open it in a web-based VS Code editor. No local setup is required.
 
-*Option 2:* Local Docker Environment
+### *Option 2:* Local Docker Environment
 
-### Prerequisites: 
+Prerequisites: 
 You must have Docker installed on your local machine.
 
 Clone the repository:
