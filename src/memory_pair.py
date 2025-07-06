@@ -29,11 +29,11 @@ class MemoryPair:
     def delete(self, U, *, add_noise=False, eps=1.0, delta=1e-6, M=1.0, L=1.0):
         m = len(U)
         if m == 0: return
-        sum_grad_U  = np.sum([self.grad(self.w, z)  for z in U], axis=0)
-        sum_hess_U  = np.sum([self.hess(self.w, z)  for z in U], axis=0)
-        H_new = (self.n * self.H - sum_hess_U) / (self.n - m)
+        sum_grad_U  = np.sum([self.grad(self.w, z)  for z in U], axis=0) # gradient of unlearned points
+        sum_hess_U  = np.sum([self.hess(self.w, z)  for z in U], axis=0) # hessian of unlearned points
+        H_new = (self.n * self.H - sum_hess_U) / (self.n - m) # estimate hessian of S/U
         delta_w = solve(H_new,  sum_grad_U) / (self.n - m)
-        w_new   = self.w + delta_w
+        w_new = self.w + delta_w
         if add_noise:
             gamma   = 2 * (M * L**2) * m**2 / (self.lam**3 * self.n**2)
             sigma   = gamma / eps * np.sqrt(2 * np.log(1.25 / delta))
