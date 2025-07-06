@@ -11,18 +11,20 @@ Statistical Analysis: Automatically calculates confidence intervals for the erro
 Reproducible Environment: Configured with a Dockerfile and devcontainer.json for one-click setup in GitHub Codespaces or local Docker.
 
 ## Repository Structure
+```
 .
-├── .devcontainer/      # Configuration for the Docker/Codespaces environment
+├── .devcontainer/
 │   ├── devcontainer.json
 │   └── Dockerfile
-├── src/                # Source code
+├── src/
 │   ├── forgettable_erm.py
 │   └── simulation.py
-├── data/               # (empty) For storing datasets
-├── results/            # (empty) For storing output plots or metrics
+├── data/  
+├── results/ 
 ├── .gitignore
-├── requirements.txt    # Python dependencies
+├── requirements.txt 
 └── README.md
+```
 
 ## Getting Started
 You can run this project in two ways: using GitHub Codespaces (recommended for ease of use) or by building the Docker container locally.
@@ -67,8 +69,10 @@ You are now inside the container's shell and ready to run the experiment.
 Usage
 Once your environment is running (either in Codespaces or a local Docker container), execute the main simulation script from the terminal:
 
-Bash
+```bash
 python src/simulation.py
+```
+
 This will run 50 simulations comparing the incremental deletion method to a full retrain. It will then print a statistical analysis of the results.
 
 ## Example Output
