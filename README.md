@@ -17,7 +17,7 @@ Reproducible Environment: Configured with a Dockerfile and devcontainer.json for
 │   ├── devcontainer.json
 │   └── Dockerfile
 ├── src/
-│   ├── forgettable_erm.py
+│   ├── memory_pair.py
 │   └── simulation.py
 ├── data/  
 ├── results/ 
