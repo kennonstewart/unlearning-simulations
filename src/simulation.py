@@ -39,20 +39,35 @@ def run_single_simulation(seed: int):
         dim            = N_FEATURES,
         lam            = ALPHA,
         max_deletions  = N_DELETE,
-        eps_total      = 1e6,       # huge ε ⇒ virtually no DP noise
+        eps_total      = 1e6,  
         delta_total    = 1e-12,
     )
 
     # ------------ initial training ------------
+    print(f"🚀  Training StreamNewtonMemoryPair with {N_TOTAL} points …")
     for idx in range(N_TOTAL):
         model.insert(X[idx], y[idx])
+    print("✅  Initial training complete.")
 
-    # ------------ choose points to delete ------------
+    # print model parameters
+    w_initial = model.theta.copy()
+    print(f"Model θ after initial training: {w_initial}")
+
+    # print curvature pairs
+    print(f"Memory pairs (S, Y, RHO): {len(model.S)}")
+    for s, y, rho in zip(model.S, model.Y, model.RHO):
+        print(f"S: {s}, Y: {y}, RHO: {rho:.4f}")
+
+    # choose points to delete
+    print(f"🗑️  Deleting {N_DELETE} points from the model …")
     delete_ids = np.random.choice(N_TOTAL, size=N_DELETE, replace=False)
+
     for idx in delete_ids:
-        model.delete(X[idx], y[idx])
+        model.delete(X[idx], y[idx])     # one point per call
 
     w_after_delete = model.theta.copy()
+    print("✅  Deletion complete.")
+    print(f"Model θ after deletion: {w_after_delete}")
 
     # ------------ closed-form retrain baseline ------------
     keep_mask          = np.ones(N_TOTAL, dtype=bool)
@@ -61,6 +76,7 @@ def run_single_simulation(seed: int):
 
     # ridge closed form: (XᵀX + λI)⁻¹ Xᵀy
     H   = X_keep.T @ X_keep + ALPHA * np.eye(N_FEATURES)
+    # closed-form ridge solution – DON'T overwrite X!
     w_star = np.linalg.solve(H, X_keep.T @ y_keep)
 
     # ------------ metric ------------
