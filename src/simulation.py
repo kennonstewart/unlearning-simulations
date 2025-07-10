@@ -50,7 +50,7 @@ def run_single_simulation(seed: int):
     # ------------ choose points to delete ------------
     delete_ids = np.random.choice(N_TOTAL, size=N_DELETE, replace=False)
     for idx in delete_ids:
-        model.delete(idx)
+        model.delete(X[idx], y[idx])
 
     w_after_delete = model.theta.copy()
 
