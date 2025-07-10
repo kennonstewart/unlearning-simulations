@@ -45,7 +45,7 @@ def run_single_simulation(seed: int):
 
     # ------------ initial training ------------
     for idx in range(N_TOTAL):
-        model.insert(idx, X[idx], y[idx])
+        model.insert(X[idx], y[idx])
 
     # ------------ choose points to delete ------------
     delete_ids = np.random.choice(N_TOTAL, size=N_DELETE, replace=False)
