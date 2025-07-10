@@ -43,6 +43,9 @@ def run_single_simulation(seed: int):
         delta_total    = 1e-12,
     )
 
+    # print model theta
+    print(f"Initial model θ: {model.theta}")
+
     # ------------ initial training ------------
     print(f"🚀  Training StreamNewtonMemoryPair with {N_TOTAL} points …")
     for idx in range(N_TOTAL):
@@ -86,6 +89,7 @@ def run_single_simulation(seed: int):
 
 # ---------------------------------------------------------------------
 if __name__ == "__main__":
+
     N_SIMULATIONS = 500
     print(f"🚀  Running {N_SIMULATIONS} simulations with StreamNewtonMemoryPair …")
 

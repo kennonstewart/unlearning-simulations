@@ -33,7 +33,6 @@ class StreamNewtonMemoryPair:
 
         # Parameters and inverse Hessian
         self.theta  = np.zeros(dim)
-        self.H_inv  = np.eye(dim) / lam          # (XᵀX + λI)⁻¹
 
         # ---- memory for L-BFGS pairs ----
         self.S, self.Y, self.RHO = [], [], []   # L-BFGS memory
@@ -65,7 +64,7 @@ class StreamNewtonMemoryPair:
         d = two_loop_recursion(g_old, self.S, self.Y, self.RHO)
 
         # optional learning-rate to tame very first step
-        lr = 0.5                      # tune 0 < lr ≤ 1
+        lr = 0.5  
         theta_new = self.theta + lr * d
 
         # ---------- curvature pair ----------
@@ -162,6 +161,9 @@ def add_pair(S, Y, RHO, s, y, m_max, eps=1e-10):
         ys = y.dot(s)
     if len(S) == m_max:
         S.pop(0); Y.pop(0); RHO.pop(0)
+    ys = abs(y.dot(s))
+    if ys < 1e-8:
+        return          # skip the pair
     S.append(s); Y.append(y); RHO.append(1.0 / ys)
 
 
