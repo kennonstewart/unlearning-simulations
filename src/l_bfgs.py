@@ -1,93 +1,123 @@
 # ---------------------------------------------------------------------
-# limited_memory_bfgs.py
+# l_bfgs.py
 #
-# Utilities for maintaining an *implicit* inverse-Hessian Hk⁻¹ through
-# (s, y, ρ) curvature pairs and for computing   d = –Hk⁻¹ g   via the
-# classic two-loop recursion.
-#
-# – No n×n matrix is ever stored.
-# – The only state is the “memory” lists S, Y, ρ (length ≤ m).
-# – A curvature pair can be *removed* simply by deleting the same index
-#   from the three lists.
+# Lightweight Limited‑memory BFGS helper that keeps all curvature
+# bookkeeping inside a single class.
 # ---------------------------------------------------------------------
 
+from typing import List
 import numpy as np
-from typing import List, Tuple
 
-# ------------------------------------------------------------
-def two_loop_recursion(g: np.ndarray,
-                       S: List[np.ndarray],
-                       Y: List[np.ndarray],
-                       RHO: List[float],
-                       gamma: float = None) -> np.ndarray:
+
+class LimitedMemoryBFGS:
     """
-    Return  d = –Hk⁻¹ g   using the L-BFGS two-loop algorithm.
+    Compact container for L‑BFGS curvature pairs and the two‑loop
+    recursion.  Maintains at most ``m_max`` pairs and never stores the
+    full inverse‑Hessian explicitly.
+
+        >>> lbfgs = LimitedMemoryBFGS(m_max=10)
+        >>> lbfgs.add_pair(s, y)
+        >>> d = lbfgs.direction(g)
 
     Parameters
     ----------
-    g      : current gradient ∇f(x_k)
-    S,Y    : lists of past   s_i = x_{i+1} – x_i,   y_i = g_{i+1} – g_i
-             ordered *oldest … newest*.  len(S) = len(Y) = m (≤ M_max)
-    RHO    : list of ρ_i = 1/(y_iᵀ s_i) (same length/order as S)
-    gamma  : optional initial scaling for H₀ = γ I.
-             If None and at least one pair exists, use
-             γ = (sᵀ y)/(yᵀ y) of **oldest** pair; else γ = 1.
-
-    Returns
-    -------
-    d      : descent direction –Hk⁻¹ g
+    m_max : int
+        Maximum number of (s, y, ρ) pairs to keep.
     """
-    q   = g.copy()
-    al  = []
 
-    # ---------- first loop (back-ward) ----------
-    for s_i, y_i, rho_i in zip(reversed(S), reversed(Y), reversed(RHO)):
-        alpha_i = rho_i * s_i.dot(q)
-        al.append(alpha_i)
-        q -= alpha_i * y_i
+    def __init__(self, m_max: int = 10):
+        self.S: List[np.ndarray] = []
+        self.Y: List[np.ndarray] = []
+        self.RHO: List[float] = []
+        self.m_max = m_max
 
-    # ---------- scale with H0 = γ I ----------
-    if gamma is None:
-        if S:
-            s0, y0 = S[0], Y[0]
-            gamma = s0.dot(y0) / (y0.dot(y0))
-        else:
-            gamma = 1.0
-    r = gamma * q
+    # -----------------------------------------------------------------
+    # public helpers
+    # -----------------------------------------------------------------
+    def __len__(self) -> int:  # ``len(lbfgs)``
+        return len(self.S)
 
-    # ---------- second loop (forward) ----------
-    for alpha_i, s_i, y_i, rho_i in zip(reversed(al), S, Y, RHO):
-        beta_i = rho_i * y_i.dot(r)
-        r += s_i * (alpha_i - beta_i)
+    def add_pair(self, s_new: np.ndarray, y_new: np.ndarray):
+        """
+        Append a new curvature pair (s, y), discarding the oldest if the
+        memory is full and ensuring yᵀs > 0 to preserve PD-ness.
+        """
+        ys = float(y_new.dot(s_new))
+        if ys <= 1e-12:           # damp to enforce positive curvature
+            y_new = y_new + 1e-10 * s_new
+            ys = float(y_new.dot(s_new))
 
-    return -r  # descent direction
-# ------------------------------------------------------------
+        if len(self.S) == self.m_max:
+            self.S.pop(0); self.Y.pop(0); self.RHO.pop(0)
 
-def add_pair(S: List[np.ndarray],
-             Y: List[np.ndarray],
-             RHO: List[float],
-             s_new: np.ndarray,
-             y_new: np.ndarray,
-             m_max: int):
-    """
-    Append a new curvature pair, discarding the oldest if memory > m_max.
-    """
-    if y_new.dot(s_new) <= 1e-12:              # curvature check
-        return
-    if len(S) == m_max:
-        S.pop(0); Y.pop(0); RHO.pop(0)
-    S.append(s_new)
-    Y.append(y_new)
-    RHO.append(1.0 / y_new.dot(s_new))
+        if abs(ys) < 1e-8:        # skip degenerate pair
+            return
 
+        self.S.append(s_new.copy())
+        self.Y.append(y_new.copy())
+        self.RHO.append(1.0 / ys)
 
-def remove_pair_at(S: List[np.ndarray],
-                   Y: List[np.ndarray],
-                   RHO: List[float],
-                   idx: int):
-    """
-    Delete the i-th curvature pair (0 = oldest).  This is how an
-    unlearning call forgets the influence of the update that created it.
-    """
-    if 0 <= idx < len(S):
-        S.pop(idx); Y.pop(idx); RHO.pop(idx)
+    def remove_pair_at(self, idx: int):
+        """Delete the *idx*-th curvature pair (0 = oldest)."""
+        if 0 <= idx < len(self.S):
+            self.S.pop(idx); self.Y.pop(idx); self.RHO.pop(idx)
+
+    def direction(self, g: np.ndarray, gamma: float | None = None) -> np.ndarray:
+        """
+        Return the descent direction  d = −H_k^{-1} g  using the classic
+        two‑loop recursion based on the currently stored curvature pairs.
+        """
+        if g.ndim != 1:
+            raise ValueError("Gradient `g` must be a 1‑D array")
+
+        q = g.copy()
+        alphas: list[float] = []
+
+        # ---------- first (backward) loop ----------
+        for s_i, y_i, rho_i in zip(reversed(self.S),
+                                   reversed(self.Y),
+                                   reversed(self.RHO)):
+            alpha_i = rho_i * s_i.dot(q)
+            alphas.append(alpha_i)
+            q -= alpha_i * y_i
+
+        # ---------- apply initial scaling H₀ = γI ----------
+        if gamma is None:
+            if self.S:
+                s0, y0 = self.S[0], self.Y[0]
+                gamma = float(s0.dot(y0) / max(y0.dot(y0), 1e-12))
+            else:
+                gamma = 1.0
+        r = gamma * q
+
+        # ---------- second (forward) loop ----------
+        for alpha_i, s_i, y_i, rho_i in zip(reversed(alphas),
+                                            self.S,
+                                            self.Y,
+                                            self.RHO):
+            beta_i = rho_i * y_i.dot(r)
+            r += s_i * (alpha_i - beta_i)
+
+        return -r
+
+# ---------------------------------------------------------------------
+# Convenience wrappers (deprecated).  New code should rely on the class
+# but the stubs remain to avoid import errors.
+# ---------------------------------------------------------------------
+def two_loop_recursion(*_a, **_k):
+    raise RuntimeError(
+        "two_loop_recursion() is deprecated. Instantiate "
+        "`LimitedMemoryBFGS` and call `.direction()` instead."
+    )
+
+def add_pair(*_a, **_k):
+    raise RuntimeError(
+        "add_pair() is deprecated. Instantiate `LimitedMemoryBFGS` and "
+        "call `.add_pair()` instead."
+    )
+
+def remove_pair_at(*_a, **_k):
+    raise RuntimeError(
+        "remove_pair_at() is deprecated. Instantiate `LimitedMemoryBFGS` "
+        "and call `.remove_pair_at()` instead."
+    )
