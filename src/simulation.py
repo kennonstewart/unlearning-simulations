@@ -3,7 +3,7 @@ import numpy as np
 import scipy.stats as st
 import os
 
-from stream_newton_memory_pair import StreamNewtonMemoryPair   # ← your class file
+from memory_pair import StreamNewtonMemoryPair   # ← your class file
 
 # ---------------------------------------------------------------------
 # synthetic‐data helper
