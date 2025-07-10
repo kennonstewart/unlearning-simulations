@@ -1,5 +1,5 @@
 import numpy as np
-from l_bfgs import two_loop_recursion, add_pair
+from l_bfgs import LimitedMemoryBFGS
 from typing import List
 
 # ----------------------------------------------------------------------
@@ -34,9 +34,8 @@ class StreamNewtonMemoryPair:
         # Parameters and inverse Hessian
         self.theta  = np.zeros(dim)
 
-        # ---- memory for L-BFGS pairs ----
-        self.S, self.Y, self.RHO = [], [], []   # L-BFGS memory
-        self.m_max = 10                        # keeps 10 curvature points
+        # L‑BFGS memory helper
+        self.lbfgs = LimitedMemoryBFGS(m_max=10)
 
         # ---- privacy bookkeeping ----
         self.K            = max_deletions
@@ -61,7 +60,7 @@ class StreamNewtonMemoryPair:
         g_old = self._grad_point(x, y)
 
         # ---------- safe Newton-like step ----------
-        d = two_loop_recursion(g_old, self.S, self.Y, self.RHO)
+        d = self.lbfgs.direction(g_old)
 
         # optional learning-rate to tame very first step
         lr = 0.5  
@@ -72,7 +71,7 @@ class StreamNewtonMemoryPair:
         g_new = self._grad_point(x, y)
         y_vec = g_new - g_old
 
-        add_pair(self.S, self.Y, self.RHO, s, y_vec, self.m_max)
+        self.lbfgs.add_pair(s, y_vec)
         self.theta = theta_new
 
     # ---------------- unlearning ----------------
@@ -84,15 +83,12 @@ class StreamNewtonMemoryPair:
         if self.deletions_so_far >= self.K:
             raise RuntimeError("max_deletions budget exceeded")
 
-        # ─ remove curvature pair from memory ───────────────
-        if not self.S:
-            raise RuntimeError("No curvature pairs to remove")
-        
-        if len(self.S) != len(self.Y) or len(self.S) != len(self.RHO):
-            raise RuntimeError("Inconsistent curvature pair lists")
-        
+        # ─ ensure at least one curvature pair exists ───────
+        if len(self.lbfgs) == 0:
+            raise RuntimeError("No curvature pairs to use for unlearning")
+
         g = self._grad_point(x, y)
-        d = two_loop_recursion(g, self.S, self.Y, self.RHO)
+        d = self.lbfgs.direction(g)
         self.theta -= d     # undo the influence (approximate)
 
         # ── calibrated Gaussian noise for (ε,δ)-unlearning ─────────
