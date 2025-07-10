@@ -1,109 +1,102 @@
+# sim_stream_newton.py
 import numpy as np
 import scipy.stats as st
-from memory_pair import MemoryPair
 import os
 
+from stream_newton_memory_pair import StreamNewtonMemoryPair   # ← your class file
+
+# ---------------------------------------------------------------------
+# synthetic‐data helper
 def generate_synthetic_data(n_samples=1000, n_features=10, noise=0.5):
-    """Generates synthetic data for a linear regression problem."""
-    X = np.random.rand(
-        n_samples, 
-        n_features
-    )
+    X = np.random.rand(n_samples, n_features)
     true_w = np.random.randn(n_features)
-    y = X @ true_w + np.random.normal(
-        0, 
-        noise, 
-        n_samples
-    )
-    return list(zip(X, y))
+    y = X @ true_w + np.random.normal(0, noise, size=n_samples)
+    return X, y, true_w
 
+# ---------------------------------------------------------------------
 def run_single_simulation(seed: int):
-    """Runs one full simulation and returns the error metrics."""
+    """
+    ▸ 1) train StreamNewtonMemoryPair on N_TOTAL points
+    ▸ 2) delete N_DELETE of them
+    ▸ 3) compare θ to closed-form ridge retrain on the remaining points
+    """
     np.random.seed(seed)
-    N_INITIAL_TRAIN, N_FEATURES, N_DELETE, ALPHA = 4500, 5, 500, 0.1
-    data = generate_synthetic_data(
-        n_samples = N_INITIAL_TRAIN, 
-        n_features = N_FEATURES
-    )
-    initial_data, data_to_delete = data[:-N_DELETE], data[-N_DELETE:]
-    
-    loss = lambda w, z: 0.5 * (z[0] @ w - z[1])**2 + 0.5 * ALPHA * np.dot(w, w)
-    grad = lambda w, z: (z[0] @ w - z[1]) * z[0] + ALPHA * w
-    hess = lambda w, z: np.outer(z[0], z[0]) + ALPHA * np.identity(N_FEATURES)
-    
-    model = MemoryPair(
-        d = N_FEATURES, 
-        loss = loss, 
-        grad = grad, 
-        hess = hess, 
-        lam = ALPHA
-    )
-    model.fit(initial_data)
-    model.delete(data_to_delete)
-    w_deleted_approx = model.w.copy()
 
-    data_after_delete = initial_data[:-N_DELETE]
-    model_retrained = MemoryPair(
-        d = N_FEATURES, 
-        loss = loss, 
-        grad = grad, 
-        hess = hess, 
-        lam = ALPHA
-    )
-    model_retrained.fit(data_after_delete)
-    w_deleted_retrained = model_retrained.w.copy()
-    
-    error = np.linalg.norm(w_deleted_approx - w_deleted_retrained)
-    norm = np.linalg.norm(w_deleted_retrained)
-    return (error / norm) * 100 if norm != 0 else 0
+    # ---------------- hyper-params ----------------
+    N_TOTAL, N_FEATURES  = 4500, 5
+    N_DELETE             = 500
+    ALPHA                = 0.1      # ridge λ
 
+    # ------------ generate data ------------
+    X, y, _ = generate_synthetic_data(
+        n_samples  = N_TOTAL,
+        n_features = N_FEATURES,
+        noise      = 0.5,
+    )
+
+    # ------------ create model ------------
+    model = StreamNewtonMemoryPair(
+        dim            = N_FEATURES,
+        lam            = ALPHA,
+        max_deletions  = N_DELETE,
+        eps_total      = 1e6,       # huge ε ⇒ virtually no DP noise
+        delta_total    = 1e-12,
+    )
+
+    # ------------ initial training ------------
+    for idx in range(N_TOTAL):
+        model.insert(idx, X[idx], y[idx])
+
+    # ------------ choose points to delete ------------
+    delete_ids = np.random.choice(N_TOTAL, size=N_DELETE, replace=False)
+    for idx in delete_ids:
+        model.delete(idx)
+
+    w_after_delete = model.theta.copy()
+
+    # ------------ closed-form retrain baseline ------------
+    keep_mask          = np.ones(N_TOTAL, dtype=bool)
+    keep_mask[delete_ids] = False
+    X_keep, y_keep     = X[keep_mask], y[keep_mask]
+
+    # ridge closed form: (XᵀX + λI)⁻¹ Xᵀy
+    H   = X_keep.T @ X_keep + ALPHA * np.eye(N_FEATURES)
+    w_star = np.linalg.solve(H, X_keep.T @ y_keep)
+
+    # ------------ metric ------------
+    error = np.linalg.norm(w_after_delete - w_star)
+    norm  = np.linalg.norm(w_star)
+    return (error / norm) * 100 if norm != 0 else 0.0
+
+# ---------------------------------------------------------------------
 if __name__ == "__main__":
     N_SIMULATIONS = 500
-    print(f"🚀 Starting {N_SIMULATIONS} simulations...")
+    print(f"🚀  Running {N_SIMULATIONS} simulations with StreamNewtonMemoryPair …")
 
     errors = [run_single_simulation(seed=i) for i in range(N_SIMULATIONS)]
 
     mean_error = np.mean(errors)
-    ci = st.t.interval(
-        0.95,
-        len(errors)-1,
-        loc=mean_error,
-        scale=st.sem(errors)
+    ci_low, ci_high = st.t.interval(
+        confidence = 0.95,
+        df         = len(errors) - 1,
+        loc        = mean_error,
+        scale      = st.sem(errors),
     )
 
-    print("\n--- ✅ Simulation Analysis ---")
+    print("\n--- ✅  Simulation Analysis ---")
     print(f"Ran {len(errors)} successful simulations.")
-    print("\n📊 [RESULTS] Incremental Deletion vs. Retraining")
-    print(f"The relative error is, on average, {mean_error:.2f}%")
-    print(f"95% Confidence Interval: [{ci[0]:.2f}%, {ci[1]:.2f}%]")
+    print("\n📊  Incremental Deletion vs. Closed-form Retraining")
+    print(f"Average relative error: {mean_error:.2f}%")
+    print(f"95% CI: [{ci_low:.2f}%, {ci_high:.2f}%]")
 
-    # --- Save results to /results/ directory ---
-    results_dir = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        'results'
-    )
-    os.makedirs(
-        results_dir, 
-        exist_ok = True
-        )
+    # ---------------- save artefacts ----------------
+    results_dir = os.path.join(os.path.dirname(__file__), "results")
+    os.makedirs(results_dir, exist_ok=True)
 
-    # Save errors as .npy
-    np.save(
-        os.path.join(
-            results_dir, 
-            'errors.npy'
-        ), 
-        np.array(errors)
-    )
+    np.save(os.path.join(results_dir, "errors.npy"), np.array(errors))
 
-    # Save summary statistics as .txt
-    summary_path = os.path.join(
-        results_dir, 
-        'summary.txt'
-    )
-    with open(summary_path, 'w') as f:
-        f.write("--- Simulation Analysis ---\n")
-        f.write(f"Ran {len(errors)} successful simulations.\n")
-        f.write("[RESULTS] Incremental Deletion vs. Retraining\n")
-        f.write(f"The relative error is, on average, {mean_error:.2f}%\n")
-        f.write(f"95% Confidence Interval: [{ci[0]:.2f}%, {ci[1]:.2f}%]\n")
+    with open(os.path.join(results_dir, "summary.txt"), "w") as f:
+        f.write("--- StreamNewtonMemoryPair Simulation ---\n")
+        f.write(f"Simulations: {len(errors)}\n")
+        f.write(f"Mean relative error: {mean_error:.2f}%\n")
+        f.write(f"95% CI: [{ci_low:.2f}%, {ci_high:.2f}%]\n")

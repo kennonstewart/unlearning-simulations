@@ -1,50 +1,108 @@
 import numpy as np
-from numpy.linalg import solve
 
-class MemoryPair:
+# ----------------------------------------
+# helper: Sherman–Morrison utilities
+def sm_add_inv(H_inv, u):
     """
-    Incremental / decremental ERM with (ε,δ)-unlearning guarantees
-    inspired by Sekhari et al. 2021.
+    Rank-1 *addition* :   H_new = H + u uᵀ
+    Returns updated inverse H_inv_new.
     """
-    def __init__(self, d, loss, grad, hess, lam):
-        self.d       = d
-        self.loss    = loss
-        self.grad    = grad
-        self.hess    = hess
-        self.lam     = lam
-        self.n   = 0
-        self.w   = np.zeros(d)
-        self.H   = None
+    Hu = H_inv @ u
+    denom = 1.0 + u.T @ Hu
+    return H_inv - np.outer(Hu, Hu) / denom
 
-    def fit(self, data, *, lr=0.01, steps=500, tol=1e-8):
-        w = self.w.copy()
-        for _ in range(steps):
-            idx = np.random.randint(len(data))
-            g   = self.grad(w, data[idx])
-            w  -= lr * g
-            if np.linalg.norm(g) < tol: break
-        H = np.mean([self.hess(w, z) for z in data], axis=0)
-        self.w, self.H, self.n = w, H, len(data)
+def sm_remove_inv(H_inv, u):
+    """
+    Rank-1 *downdate* :   H_new = H − u uᵀ
+    (caller must ensure denominator > 0)
+    """
+    Hu = H_inv @ u
+    denom = 1.0 - u.T @ Hu           # must stay positive
+    return H_inv + np.outer(Hu, Hu) / denom
+# ----------------------------------------
 
-    def delete(self, U, *, add_noise=False, eps=1.0, delta=1e-6, M=1.0, L=1.0):
-        m = len(U)
-        if m == 0: return
-        sum_grad_U  = np.sum([self.grad(self.w, z)  for z in U], axis=0) # gradient of unlearned points
-        sum_hess_U  = np.sum([self.hess(self.w, z)  for z in U], axis=0) # hessian of unlearned points
-        H_new = (self.n * self.H - sum_hess_U) / (self.n - m) # estimate hessian of S/U
-        delta_w = solve(H_new,  sum_grad_U) / (self.n - m)
-        w_new = self.w + delta_w
-        if add_noise:
-            gamma   = 2 * (M * L**2) * m**2 / (self.lam**3 * self.n**2)
-            sigma   = gamma / eps * np.sqrt(2 * np.log(1.25 / delta))
-            w_new  += np.random.normal(scale=sigma, size=self.d)
-        self.w, self.H, self.n = w_new, H_new, self.n - m
 
-    def insert(self, V):
-        k = len(V)
-        if k == 0: return
-        sum_grad_V = np.sum([self.grad(self.w, z)  for z in V], axis=0)
-        sum_hess_V = np.sum([self.hess(self.w, z)  for z in V], axis=0)
-        H_new = (self.n * self.H + sum_hess_V) / (self.n + k)
-        delta_w = -solve(H_new, sum_grad_V) / (self.n + k)
-        self.w, self.H, self.n = self.w + delta_w, H_new, self.n + k
+class StreamNewtonMemoryPair:
+    """
+    Online ridge-regression learner + unlearner with
+    (ε,δ)-style Gaussian noise per deletion.
+
+    Loss      : ½(θᵀx − y)²   (squared error)
+    Regulariser: λ‖θ‖₂²
+    """
+
+    def __init__(self, dim, lam=1.0,
+                 eps_total=1.0,   delta_total=1e-5,
+                 max_deletions=20):
+        self.dim  = dim
+        self.lam  = lam
+
+        # Model parameters & (regularised) Hessian inverse
+        self.theta = np.zeros(dim)
+        self.H_inv = np.eye(dim) / lam          # (XᵀX + λI)⁻¹
+
+        # Storage: keep raw (x,y) for exact gradient recomputation
+        self.data_store = {}     # id -> (x, y)
+        self.deleted     = set()
+
+        # --- privacy bookkeeping ---
+        self.K          = max_deletions          # anticipate ≤K deletions
+        self.eps_total  = eps_total
+        self.delta_total = delta_total
+        self.eps_step   = eps_total  / (2*max_deletions)   # split budget
+        self.delta_step = delta_total / (2*max_deletions)
+        self.eps_spent  = 0.0
+
+    # 1st-order gradient (current θ)
+    def grad(self, x, y):
+        err = self.theta @ x - y
+        return err * x
+
+    # ---------------- insert ----------------
+    def insert(self, idx, x, y):
+        """Process a new data point (x,y)."""
+        if idx in self.deleted or idx in self.data_store:
+            raise ValueError("duplicate id")
+
+        # Update inverse Hessian   H⁻¹ ← (H + x xᵀ)⁻¹  via Sherman–Morrison
+        self.H_inv = sm_add_inv(self.H_inv, x)
+
+        # One Newton step using fresh gradient
+        g = self.grad(x, y)
+        self.theta -= self.H_inv @ g
+
+        # Store raw data for possible future deletion
+        self.data_store[idx] = (x, y)
+
+    # ---------------- delete ----------------
+    def delete(self, idx):
+        """Remove the influence of data point idx (if present)."""
+        if idx in self.deleted or idx not in self.data_store:
+            return
+
+        x, y = self.data_store.pop(idx)
+
+        # ---------------- Hessian downdate ----------------
+        self.H_inv = sm_remove_inv(self.H_inv, x)
+
+        # Re-compute gradient of this point *at current θ*
+        g = self.grad(x, y)
+
+        delta_theta = self.H_inv @ g       # influence to remove
+        self.theta -= delta_theta
+
+        # ---------------- calibrated Gaussian noise ----------------
+        sensitivity = np.linalg.norm(delta_theta, 2)
+        sigma = (sensitivity *
+                 np.sqrt(2*np.log(1.25/self.delta_step))
+                 / self.eps_step)
+
+        self.theta += np.random.normal(0.0, sigma, size=self.dim)
+
+        # Budget accounting
+        self.eps_spent += self.eps_step
+        self.deleted.add(idx)
+
+    # ---------------- utility ----------------
+    def privacy_ok(self):
+        return self.eps_spent <= self.eps_total
