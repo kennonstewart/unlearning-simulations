@@ -74,7 +74,7 @@ class LimitedMemoryBFGS:
         if 0 <= idx < len(self.S):
             self.S.pop(idx); self.Y.pop(idx); self.RHO.pop(idx)
 
-    def direction(self, g: np.ndarray, gamma: float | None = None) -> np.ndarray:
+    def direction(self, g: np.ndarray, gamma: float ) -> np.ndarray:
         """
         Return the descent direction  d = −H_k^{-1} g  using the classic
         two‑loop recursion based on the currently stored curvature pairs.

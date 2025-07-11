@@ -4,7 +4,7 @@ disable_existing_loggers: False
 formatters:
   json:
     "()": structlog.make_filtering_bound_logger
-    keep_exc_info: True
+    keep_exc_info: False
     processors:
       - structlog.processors.TimeStamper:
           fmt: ISO

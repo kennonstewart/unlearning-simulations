@@ -3,7 +3,7 @@ import numpy as np
 import scipy.stats as st
 import os
 
-from memory_pair import StreamNewtonMemoryPair   # ← your class file
+from hessian_based.memory_pair import StreamNewtonMemoryPair   # ← your class file
 
 from event_logging import init_logging
 import logging
