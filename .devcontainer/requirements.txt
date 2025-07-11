@@ -7,3 +7,4 @@ pandas
 scikit-learn
 jupyterlab
 jupyterlab-git
+structlog
