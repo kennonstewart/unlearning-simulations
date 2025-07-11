@@ -1,21 +1,22 @@
 # ---------------------------------------------------------------------
 # l_bfgs.py
 #
-# Lightweight Limited‑memory BFGS helper that keeps all curvature
+# Lightweight Limited-memory BFGS helper that keeps all curvature
 # bookkeeping inside a single class.
 # ---------------------------------------------------------------------
 
 from typing import List
 import numpy as np
 import logging
+
 logger = logging.getLogger(__name__)
 
 
 class LimitedMemoryBFGS:
     """
-    Compact container for L‑BFGS curvature pairs and the two‑loop
+    Compact container for L-BFGS curvature pairs and the two-loop
     recursion.  Maintains at most ``m_max`` pairs and never stores the
-    full inverse‑Hessian explicitly.
+    full inverse-Hessian explicitly.
 
         >>> lbfgs = LimitedMemoryBFGS(m_max=10)
         >>> lbfgs.add_pair(s, y)
@@ -42,17 +43,19 @@ class LimitedMemoryBFGS:
     def add_pair(self, s_new: np.ndarray, y_new: np.ndarray):
         """
         Append a new curvature pair (s, y), discarding the oldest if the
-        memory is full and ensuring yᵀs > 0 to preserve PD-ness.
+        memory is full and ensuring yᵀs > 0 to preserve PD-ness.
         """
         ys = float(y_new.dot(s_new))
         print(f"Curvature pair (s, y, ρ): {s_new}, {y_new}, {1.0 / ys if ys > 0 else 0}")
-        if ys <= 1e-12:           # damp to enforce positive curvature
+        if ys <= 1e-12:  # damp to enforce positive curvature
             print("Damping curvature pair")
             y_new = y_new + 1e-10 * s_new
             ys = float(y_new.dot(s_new))
 
         if len(self.S) == self.m_max:
-            self.S.pop(0); self.Y.pop(0); self.RHO.pop(0)
+            self.S.pop(0)
+            self.Y.pop(0)
+            self.RHO.pop(0)
 
         # ---- relative, not absolute, degeneracy test ----
         rel_tol = 1e-5
@@ -75,17 +78,19 @@ class LimitedMemoryBFGS:
         self.RHO.append(1.0 / ys)
 
     def remove_pair_at(self, idx: int):
-        """Delete the *idx*-th curvature pair (0 = oldest)."""
+        """Delete the *idx*-th curvature pair (0 = oldest)."""
         if 0 <= idx < len(self.S):
-            self.S.pop(idx); self.Y.pop(idx); self.RHO.pop(idx)
+            self.S.pop(idx)
+            self.Y.pop(idx)
+            self.RHO.pop(idx)
 
     def direction(self, g: np.ndarray, gamma: float | None = None) -> np.ndarray:
         """
-        Return the descent direction  d = −H_k^{-1} g  using the classic
-        two‑loop recursion based on the currently stored curvature pairs.
+        Return the descent direction  d = −H_k^{-1} g  using the classic
+        two-loop recursion based on the currently stored curvature pairs.
         """
         if g.ndim != 1:
-            raise ValueError("Gradient `g` must be a 1‑D array")
+            raise ValueError("Gradient `g` must be a 1-D array")
 
         q = g.copy()
         alphas: list[float] = []
@@ -93,32 +98,28 @@ class LimitedMemoryBFGS:
         # try block for the first backward loop
         try:
             # Treat *any* FP problem as fatal inside the recursion
-            with np.errstate(over="raise", under="raise",
-                             divide="raise", invalid="raise"):
+            with np.errstate(over="raise", under="raise", divide="raise", invalid="raise"):
                 # ---------- first (backward) loop ----------
-                for s_i, y_i, rho_i in zip(
-                    reversed(self.S), reversed(self.Y), reversed(self.RHO)
-                ):
+                for s_i, y_i, rho_i in zip(reversed(self.S), reversed(self.Y), reversed(self.RHO)):
                     alpha_i = rho_i * s_i.dot(q)
                     alphas.append(alpha_i)
                     q -= alpha_i * y_i
 
-            # ---------- apply initial scaling H₀ = γI ----------
-            if gamma is None:
-                if self.S:
-                    s0, y0 = self.S[0], self.Y[0]
-                    gamma = float(s0.dot(y0) / max(y0.dot(y0), 1e-12))
-                else:
-                    gamma = 1.0
-            r = gamma * q
+                # ---------- apply initial scaling H₀ = γI ----------
+                if gamma is None:
+                    if self.S:
+                        s_last, y_last = self.S[-1], self.Y[-1]
+                        gamma = s_last.dot(y_last) / max(y_last.dot(y_last), 1e-12)
+                    else:
+                        gamma = 1.0
+                r = gamma * q
 
-            # ---------- second (forward) loop ----------
-            for alpha_i, s_i, y_i, rho_i in zip(reversed(alphas),
-                                                self.S,
-                                                self.Y,
-                                                self.RHO):
-                beta_i = rho_i * y_i.dot(r)
-                r += s_i * (alpha_i - beta_i)
+                # ---------- second (forward) loop ----------
+                for (s_i, y_i, rho_i), alpha_i in zip(
+                    zip(self.S, self.Y, self.RHO), reversed(alphas)
+                ):
+                    beta_i = rho_i * y_i.dot(r)
+                    r += s_i * (alpha_i - beta_i)
         except FloatingPointError as e:
             logger.warning(
                 "lbfgs_direction_abort",
@@ -138,6 +139,50 @@ class LimitedMemoryBFGS:
         )
 
         return -r
+
+
+class OnlineLBFGS(LimitedMemoryBFGS):
+    """
+    Online L-BFGS variant based on Schraudolph et al. (2007).
+    This implementation modifies the initial scaling of the Hessian
+    to be more robust to stochastic noise.
+    """
+
+    def direction(self, g: np.ndarray) -> np.ndarray:
+        """
+        Return the descent direction using the online-adapted two-loop recursion.
+        """
+        if g.ndim != 1:
+            raise ValueError("Gradient `g` must be a 1-D array")
+
+        p = -g.copy()
+        alphas = []
+        
+        # --- First loop (same as standard L-BFGS) ---
+        for s_i, y_i in zip(reversed(self.S), reversed(self.Y)):
+            alpha_i = (s_i.dot(p)) / (s_i.dot(y_i)) # using rho is unstable here
+            alphas.append(alpha_i)
+            p -= alpha_i * y_i
+        
+        # --- Online initial scaling H₀ (the key difference) ---
+        # Averages the scaling factor over the memory buffer 
+        if self.S:
+            scaling_factors = [s_i.dot(y_i) / max(y_i.dot(y_i), 1e-12) for s_i, y_i in zip(self.S, self.Y)]
+            gamma = sum(scaling_factors) / len(scaling_factors)
+            p *= gamma
+
+        # --- Second loop (same as standard L-BFGS) ---
+        for (s_i, y_i), alpha_i in zip(zip(self.S, self.Y), reversed(alphas)):
+            beta = (y_i.dot(p)) / (s_i.dot(y_i))
+            p += s_i * (alpha_i - beta)
+
+        logger.debug(
+            "online_lbfgs_direction_computed",
+            extra={"grad_norm": float(np.linalg.norm(g)), "mem_pairs": len(self.S)},
+        )
+        
+        return p
+
 
 # ---------------------------------------------------------------------
 # Convenience wrappers (deprecated).  New code should rely on the class
@@ -160,6 +205,3 @@ def remove_pair_at(*_a, **_k):
         "remove_pair_at() is deprecated. Instantiate `LimitedMemoryBFGS` "
         "and call `.remove_pair_at()` instead."
     )
-
-
-

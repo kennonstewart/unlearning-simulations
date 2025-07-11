@@ -31,8 +31,8 @@ def run_single_simulation(seed: int):
     logger.info("simulation_run_start", extra={"seed": seed})
 
     # ---------------- hyper-params ----------------
-    N_TOTAL, N_FEATURES  = 50, 5
-    N_DELETE             = 5
+    N_TOTAL, N_FEATURES  = 4500, 5
+    N_DELETE             = 500
     ALPHA                = 0.1      # ridge λ
 
     # ------------ generate data ------------
