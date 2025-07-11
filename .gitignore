@@ -9,3 +9,4 @@ __pycache__/
 # Results - Don't commit large result files
 results/*
 !results/.gitkeep
+logs/

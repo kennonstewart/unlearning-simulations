@@ -59,7 +59,9 @@ class StreamNewtonMemoryPair:
     
     
     def insert(self, x: np.ndarray, y: float):
+        print(f"Insertion requested for {x}, {y}")
         g_old = self._grad_point(x, y)
+        print(f"Initial gradient: {g_old}")
         logger.info("insert_called", extra={"residual": float(g_old.dot(g_old) ** 0.5)})
 
         # ---------- safe Newton-like step ----------
@@ -81,6 +83,7 @@ class StreamNewtonMemoryPair:
         g_new = self._grad_point(x, y)
         y_vec = g_new - g_old
 
+        print(f"Adding curvature pair (s, y): {s}, {y_vec}")
         self.lbfgs.add_pair(s, y_vec)
         self.theta = theta_new
 
@@ -91,12 +94,14 @@ class StreamNewtonMemoryPair:
         No raw data are stored internally; caller must supply x, y.
         """
         logger.info("delete_called")
+        print("deletion requested.")
+        print(self.lbfgs.S)
 
         if self.deletions_so_far >= self.K:
             raise RuntimeError("max_deletions budget exceeded")
 
         # ─ ensure at least one curvature pair exists ───────
-        if len(self.lbfgs) == 0:
+        if len(self.lbfgs.S) == 0:
             raise RuntimeError("No curvature pairs to use for unlearning")
 
         g = self._grad_point(x, y)

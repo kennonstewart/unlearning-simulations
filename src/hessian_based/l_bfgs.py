@@ -45,14 +45,19 @@ class LimitedMemoryBFGS:
         memory is full and ensuring yᵀs > 0 to preserve PD-ness.
         """
         ys = float(y_new.dot(s_new))
+        print(f"Curvature pair (s, y, ρ): {s_new}, {y_new}, {1.0 / ys if ys > 0 else 0}")
         if ys <= 1e-12:           # damp to enforce positive curvature
+            print("Damping curvature pair")
             y_new = y_new + 1e-10 * s_new
             ys = float(y_new.dot(s_new))
 
         if len(self.S) == self.m_max:
             self.S.pop(0); self.Y.pop(0); self.RHO.pop(0)
 
-        if abs(ys) < 1e-8:        # skip degenerate pair
+        # ---- relative, not absolute, degeneracy test ----
+        rel_tol = 1e-5
+        if abs(ys) < rel_tol * np.linalg.norm(s_new) * np.linalg.norm(y_new):
+            logger.debug("skip_curvature_pair", reason="relative_ys_small", ys=ys)
             return
 
         logger.info(
@@ -74,7 +79,7 @@ class LimitedMemoryBFGS:
         if 0 <= idx < len(self.S):
             self.S.pop(idx); self.Y.pop(idx); self.RHO.pop(idx)
 
-    def direction(self, g: np.ndarray, gamma: float ) -> np.ndarray:
+    def direction(self, g: np.ndarray, gamma: float | None = None) -> np.ndarray:
         """
         Return the descent direction  d = −H_k^{-1} g  using the classic
         two‑loop recursion based on the currently stored curvature pairs.
@@ -85,30 +90,47 @@ class LimitedMemoryBFGS:
         q = g.copy()
         alphas: list[float] = []
 
-        # ---------- first (backward) loop ----------
-        for s_i, y_i, rho_i in zip(reversed(self.S),
-                                   reversed(self.Y),
-                                   reversed(self.RHO)):
-            alpha_i = rho_i * s_i.dot(q)
-            alphas.append(alpha_i)
-            q -= alpha_i * y_i
+        # try block for the first backward loop
+        try:
+            # Treat *any* FP problem as fatal inside the recursion
+            with np.errstate(over="raise", under="raise",
+                             divide="raise", invalid="raise"):
+                # ---------- first (backward) loop ----------
+                for s_i, y_i, rho_i in zip(
+                    reversed(self.S), reversed(self.Y), reversed(self.RHO)
+                ):
+                    alpha_i = rho_i * s_i.dot(q)
+                    alphas.append(alpha_i)
+                    q -= alpha_i * y_i
 
-        # ---------- apply initial scaling H₀ = γI ----------
-        if gamma is None:
-            if self.S:
-                s0, y0 = self.S[0], self.Y[0]
-                gamma = float(s0.dot(y0) / max(y0.dot(y0), 1e-12))
-            else:
-                gamma = 1.0
-        r = gamma * q
+            # ---------- apply initial scaling H₀ = γI ----------
+            if gamma is None:
+                if self.S:
+                    s0, y0 = self.S[0], self.Y[0]
+                    gamma = float(s0.dot(y0) / max(y0.dot(y0), 1e-12))
+                else:
+                    gamma = 1.0
+            r = gamma * q
 
-        # ---------- second (forward) loop ----------
-        for alpha_i, s_i, y_i, rho_i in zip(reversed(alphas),
-                                            self.S,
-                                            self.Y,
-                                            self.RHO):
-            beta_i = rho_i * y_i.dot(r)
-            r += s_i * (alpha_i - beta_i)
+            # ---------- second (forward) loop ----------
+            for alpha_i, s_i, y_i, rho_i in zip(reversed(alphas),
+                                                self.S,
+                                                self.Y,
+                                                self.RHO):
+                beta_i = rho_i * y_i.dot(r)
+                r += s_i * (alpha_i - beta_i)
+        except FloatingPointError as e:
+            logger.warning(
+                "lbfgs_direction_abort",
+                extra={
+                    "err": str(e),
+                    "grad_norm": float(np.linalg.norm(g)),
+                    "mem_pairs": len(self.S),
+                },
+            )
+            raise RuntimeError(
+                "Numerical instability detected in LimitedMemoryBFGS.direction"
+            ) from e
 
         logger.debug(
             "lbfgs_direction_computed",
@@ -138,3 +160,6 @@ def remove_pair_at(*_a, **_k):
         "remove_pair_at() is deprecated. Instantiate `LimitedMemoryBFGS` "
         "and call `.remove_pair_at()` instead."
     )
+
+
+

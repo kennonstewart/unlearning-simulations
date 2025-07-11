@@ -31,8 +31,8 @@ def run_single_simulation(seed: int):
     logger.info("simulation_run_start", extra={"seed": seed})
 
     # ---------------- hyper-params ----------------
-    N_TOTAL, N_FEATURES  = 4500, 5
-    N_DELETE             = 500
+    N_TOTAL, N_FEATURES  = 50, 5
+    N_DELETE             = 5
     ALPHA                = 0.1      # ridge λ
 
     # ------------ generate data ------------
@@ -66,8 +66,8 @@ def run_single_simulation(seed: int):
     print(f"Model θ after initial training: {w_initial}")
 
     # print curvature pairs
-    print(f"Memory pairs (S, Y, RHO): {len(model.S)}")
-    for s, y, rho in zip(model.S, model.Y, model.RHO):
+    print(f"Memory pairs (S, Y, RHO): {len(model.lbfgs.S)}")
+    for s, y, rho in zip(model.lbfgs.S, model.lbfgs.Y, model.lbfgs.RHO):
         print(f"S: {s}, Y: {y}, RHO: {rho:.4f}")
 
     # choose points to delete
