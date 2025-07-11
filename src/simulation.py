@@ -2,8 +2,9 @@
 import numpy as np
 import scipy.stats as st
 import os
+import itertools
 
-from hessian_based.memory_pair import StreamNewtonMemoryPair   # ← your class file
+from hessian_based.memory_pair import StreamNewtonMemoryPair
 
 from event_logging import init_logging
 import logging
@@ -21,19 +22,23 @@ def generate_synthetic_data(n_samples=1000, n_features=10, noise=0.5):
     return X, y, true_w
 
 # ---------------------------------------------------------------------
-def run_single_simulation(seed: int):
+def run_single_simulation(seed: int, *, N_TOTAL: int, N_FEATURES: int, N_DELETE: int, ALPHA: float):
     """
     ▸ 1) train StreamNewtonMemoryPair on N_TOTAL points
     ▸ 2) delete N_DELETE of them
     ▸ 3) compare θ to closed-form ridge retrain on the remaining points
     """
     np.random.seed(seed)
-    logger.info("simulation_run_start", extra={"seed": seed})
-
-    # ---------------- hyper-params ----------------
-    N_TOTAL, N_FEATURES  = 4500, 5
-    N_DELETE             = 500
-    ALPHA                = 0.1      # ridge λ
+    logger.info(
+        "simulation_run_start",
+        extra={
+            "seed": seed,
+            "N_TOTAL": N_TOTAL,
+            "N_FEATURES": N_FEATURES,
+            "N_DELETE": N_DELETE,
+            "ALPHA": ALPHA,
+        },
+    )
 
     # ------------ generate data ------------
     X, y, _ = generate_synthetic_data(
@@ -47,31 +52,20 @@ def run_single_simulation(seed: int):
         dim            = N_FEATURES,
         lam            = ALPHA,
         max_deletions  = N_DELETE,
-        eps_total      = 1e6,  
+        eps_total      = 1e6,
         delta_total    = 1e-12,
     )
 
-    # print model theta
-    print(f"Initial model θ: {model.theta}")
 
     # ------------ initial training ------------
-    print(f"🚀  Training StreamNewtonMemoryPair with {N_TOTAL} points …")
     for idx in range(N_TOTAL):
         model.insert(X[idx], y[idx])
     logger.info("initial_training_complete", extra={"samples": N_TOTAL})
-    print("✅  Initial training complete.")
 
     # print model parameters
     w_initial = model.theta.copy()
-    print(f"Model θ after initial training: {w_initial}")
-
-    # print curvature pairs
-    print(f"Memory pairs (S, Y, RHO): {len(model.lbfgs.S)}")
-    for s, y, rho in zip(model.lbfgs.S, model.lbfgs.Y, model.lbfgs.RHO):
-        print(f"S: {s}, Y: {y}, RHO: {rho:.4f}")
 
     # choose points to delete
-    print(f"🗑️  Deleting {N_DELETE} points from the model …")
     delete_ids = np.random.choice(N_TOTAL, size=N_DELETE, replace=False)
 
     for idx in delete_ids:
@@ -80,8 +74,6 @@ def run_single_simulation(seed: int):
     logger.info("deletion_phase_complete", extra={"deleted": N_DELETE})
 
     w_after_delete = model.theta.copy()
-    print("✅  Deletion complete.")
-    print(f"Model θ after deletion: {w_after_delete}")
 
     # ------------ closed-form retrain baseline ------------
     keep_mask          = np.ones(N_TOTAL, dtype=bool)
@@ -97,49 +89,81 @@ def run_single_simulation(seed: int):
     error = np.linalg.norm(w_after_delete - w_star)
     norm  = np.linalg.norm(w_star)
     rel_error = (error / norm) * 100 if norm != 0 else 0.0
-    logger.info("simulation_run_complete", extra={"relative_error": rel_error})
+    logger.info(
+        "simulation_run_complete",
+        extra={
+            "relative_error": rel_error,
+            "N_TOTAL": N_TOTAL,
+            "N_FEATURES": N_FEATURES,
+            "N_DELETE": N_DELETE,
+            "ALPHA": ALPHA,
+        },
+    )
     return rel_error
 
 # ---------------------------------------------------------------------
+
 if __name__ == "__main__":
 
     N_SIMULATIONS = 500
-    print(f"🚀  Running {N_SIMULATIONS} simulations with StreamNewtonMemoryPair …")
 
-    errors = [run_single_simulation(seed=i) for i in range(N_SIMULATIONS)]
+    # ------------------------------------------------------------------
+    # Hyper‑parameter grid definition
+    param_grid = {
+        "ALPHA":    [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5],
+        "N_DELETE": [100, 250, 500, 1000],
+    }
 
-    mean_error = np.mean(errors)
-    ci_low, ci_high = st.t.interval(
-        confidence = 0.95,
-        df         = len(errors) - 1,
-        loc        = mean_error,
-        scale      = st.sem(errors),
-    )
+    # Fixed parameters
+    N_TOTAL    = 4500
+    N_FEATURES = 5
 
-    print("\n--- ✅  Simulation Analysis ---")
-    print(f"Ran {len(errors)} successful simulations.")
-    print("\n📊  Incremental Deletion vs. Closed-form Retraining")
-    print(f"Average relative error: {mean_error:.2f}%")
-    print(f"95% CI: [{ci_low:.2f}%, {ci_high:.2f}%]")
+    for ALPHA, N_DELETE in itertools.product(param_grid["ALPHA"], param_grid["N_DELETE"]):
+        config_name = f"alpha_{ALPHA}_del_{N_DELETE}"
+        logger.info("grid_search_config_start", extra={"config": config_name})
+        errors = [
+            run_single_simulation(
+                seed=i,
+                N_TOTAL=N_TOTAL,
+                N_FEATURES=N_FEATURES,
+                N_DELETE=N_DELETE,
+                ALPHA=ALPHA,
+            )
+            for i in range(N_SIMULATIONS)
+        ]
 
-    logger.info(
-        "all_simulations_complete",
-        extra={
-            "runs": N_SIMULATIONS,
-            "mean_error": mean_error,
-            "ci_low": ci_low,
-            "ci_high": ci_high,
-        },
-    )
+        mean_error = np.mean(errors)
+        ci_low, ci_high = st.t.interval(
+            confidence=0.95,
+            df=len(errors) - 1,
+            loc=mean_error,
+            scale=st.sem(errors),
+        )
 
-    # ---------------- save artefacts ----------------
-    results_dir = os.path.join(os.path.dirname(__file__), "results")
-    os.makedirs(results_dir, exist_ok=True)
+        print("\n--- ✅  Simulation Analysis ---")
+        print(f"Config: {config_name}")
+        print(f"Ran {len(errors)} successful simulations.")
+        print(f"Average relative error: {mean_error:.2f}%")
+        print(f"95% CI: [{ci_low:.2f}%, {ci_high:.2f}%]")
 
-    np.save(os.path.join(results_dir, "errors.npy"), np.array(errors))
+        logger.info(
+            "grid_search_config_complete",
+            extra={
+                "config": config_name,
+                "mean_error": mean_error,
+                "ci_low": ci_low,
+                "ci_high": ci_high,
+            },
+        )
 
-    with open(os.path.join(results_dir, "summary.txt"), "w") as f:
-        f.write("--- StreamNewtonMemoryPair Simulation ---\n")
-        f.write(f"Simulations: {len(errors)}\n")
-        f.write(f"Mean relative error: {mean_error:.2f}%\n")
-        f.write(f"95% CI: [{ci_low:.2f}%, {ci_high:.2f}%]\n")
+        # ---------------- save artefacts ----------------
+        results_dir = os.path.join(os.path.dirname(__file__), "results", config_name)
+        os.makedirs(results_dir, exist_ok=True)
+
+        np.save(os.path.join(results_dir, "errors.npy"), np.array(errors))
+
+        with open(os.path.join(results_dir, "summary.txt"), "w") as f:
+            f.write(f"--- StreamNewtonMemoryPair Simulation ({config_name}) ---\n")
+            f.write(f"Simulations: {len(errors)}\n")
+            f.write(f"Mean relative error: {mean_error:.2f}%\n")
+            f.write(f"95% CI: [{ci_low:.2f}%, {ci_high:.2f}%]\n")

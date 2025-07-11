@@ -1,35 +1,48 @@
 version: 1
 disable_existing_loggers: False
 
+# --------------------------------
+# 1️⃣ Formatters
+# --------------------------------
+formatters:
+  json:
+    (): pythonjsonlogger.jsonlogger.JsonFormatter
+    fmt: '%(asctime)s %(levelname)s %(name)s %(message)s'
+
+# --------------------------------
+# 2️⃣ Handlers
+# --------------------------------
 handlers:
+  # All messages (DEBUG+) from the named logger
   events:
     class: logging.handlers.RotatingFileHandler
     filename: logs/current_run/events.jsonl
     maxBytes: 5_000_000
-    backupCount: 5
+    backupCount: 25
+    level: DEBUG          # capture everything it receives
+    formatter: json
 
-  # This 'warnings' handler was likely missing. Add it back.
-  warnings:
-    class: logging.handlers.RotatingFileHandler
-    filename: logs/current_run/warnings.jsonl
-    maxBytes: 2_000_000
-    backupCount: 3
-    level: WARNING
-
+  # High-severity fallback (root)
   errors:
     class: logging.handlers.RotatingFileHandler
     filename: logs/current_run/errors.jsonl
-    maxBytes: 2_000_000
-    backupCount: 3
-    level: ERROR
+    maxBytes: 5_000_000
+    backupCount: 25
+    level: WARNING        # WARNING, ERROR, CRITICAL
+    formatter: json
 
+# --------------------------------
+# 3️⃣ Named logger (your code)
+# --------------------------------
 loggers:
-  "unlearning_simulations":
-    level: INFO
-    # This list requires 'events', 'warnings', and 'errors' to be defined above.
-    handlers: [events, warnings, errors]
-    propagate: False
+  "hessian_based":
+    level: DEBUG                      # let DEBUG flow
+    handlers: [events]                # always land in events.jsonl
+    propagate: True                   # bubble up to root as well
 
+# --------------------------------
+# 4️⃣ Root logger (fallback)
+# --------------------------------
 root:
-  level: WARNING
-  handlers: [warnings, errors]
+  level: WARNING                      # ignore DEBUG/INFO
+  handlers: [errors]

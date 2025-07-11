@@ -46,9 +46,7 @@ class LimitedMemoryBFGS:
         memory is full and ensuring yᵀs > 0 to preserve PD-ness.
         """
         ys = float(y_new.dot(s_new))
-        print(f"Curvature pair (s, y, ρ): {s_new}, {y_new}, {1.0 / ys if ys > 0 else 0}")
         if ys <= 1e-12:  # damp to enforce positive curvature
-            print("Damping curvature pair")
             y_new = y_new + 1e-10 * s_new
             ys = float(y_new.dot(s_new))
 
@@ -60,7 +58,7 @@ class LimitedMemoryBFGS:
         # ---- relative, not absolute, degeneracy test ----
         rel_tol = 1e-5
         if abs(ys) < rel_tol * np.linalg.norm(s_new) * np.linalg.norm(y_new):
-            logger.debug("skip_curvature_pair", reason="relative_ys_small", ys=ys)
+            logger.info("skip_curvature_pair", reason="relative_ys_small", ys=ys)
             return
 
         logger.info(
@@ -133,7 +131,7 @@ class LimitedMemoryBFGS:
                 "Numerical instability detected in LimitedMemoryBFGS.direction"
             ) from e
 
-        logger.debug(
+        logger.info(
             "lbfgs_direction_computed",
             extra={"grad_norm": float(np.linalg.norm(g)), "mem_pairs": len(self.S)},
         )
@@ -176,7 +174,7 @@ class OnlineLBFGS(LimitedMemoryBFGS):
             beta = (y_i.dot(p)) / (s_i.dot(y_i))
             p += s_i * (alpha_i - beta)
 
-        logger.debug(
+        logger.info(
             "online_lbfgs_direction_computed",
             extra={"grad_norm": float(np.linalg.norm(g)), "mem_pairs": len(self.S)},
         )

@@ -171,7 +171,7 @@ def two_loop_recursion(g, S, Y, RHO, gamma=None):
     for a, s, y, rho in zip(reversed(al), S, Y, RHO):
         b = rho * y.dot(r)
         r += s * (a - b)
-    logger.debug(
+    logger.info(
         "lbfgs_direction_computed",
         extra={"grad_norm": float(np.linalg.norm(g)), "mem_pairs": len(S)},
     )
