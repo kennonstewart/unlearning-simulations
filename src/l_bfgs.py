@@ -7,6 +7,8 @@
 
 from typing import List
 import numpy as np
+import logging
+logger = logging.getLogger(__name__)
 
 
 class LimitedMemoryBFGS:
@@ -53,6 +55,16 @@ class LimitedMemoryBFGS:
         if abs(ys) < 1e-8:        # skip degenerate pair
             return
 
+        logger.info(
+            "lbfgs_add_pair",
+            extra={
+                "s_norm": float(np.linalg.norm(s_new)),
+                "y_norm": float(np.linalg.norm(y_new)),
+                "rho": 1.0 / ys,
+                "memory_len": len(self.S) + 1 if len(self.S) < self.m_max else self.m_max,
+            },
+        )
+
         self.S.append(s_new.copy())
         self.Y.append(y_new.copy())
         self.RHO.append(1.0 / ys)
@@ -97,6 +109,11 @@ class LimitedMemoryBFGS:
                                             self.RHO):
             beta_i = rho_i * y_i.dot(r)
             r += s_i * (alpha_i - beta_i)
+
+        logger.debug(
+            "lbfgs_direction_computed",
+            extra={"grad_norm": float(np.linalg.norm(g)), "mem_pairs": len(self.S)},
+        )
 
         return -r
 

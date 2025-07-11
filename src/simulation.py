@@ -5,6 +5,13 @@ import os
 
 from memory_pair import StreamNewtonMemoryPair   # ← your class file
 
+from logging_setup import init_logging
+import logging
+
+log_dir = init_logging()
+logger = logging.getLogger(__name__)
+logger.info("simulation_start", extra={"log_dir": str(log_dir)})
+
 # ---------------------------------------------------------------------
 # synthetic‐data helper
 def generate_synthetic_data(n_samples=1000, n_features=10, noise=0.5):

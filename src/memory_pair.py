@@ -1,6 +1,8 @@
 import numpy as np
 from l_bfgs import LimitedMemoryBFGS
 from typing import List
+import logging
+logger = logging.getLogger(__name__)
 
 # ----------------------------------------------------------------------
 class StreamNewtonMemoryPair:
@@ -58,6 +60,7 @@ class StreamNewtonMemoryPair:
     
     def insert(self, x: np.ndarray, y: float):
         g_old = self._grad_point(x, y)
+        logger.info("insert_called", extra={"residual": float(g_old.dot(g_old) ** 0.5)})
 
         # ---------- safe Newton-like step ----------
         d = self.lbfgs.direction(g_old)
@@ -68,6 +71,13 @@ class StreamNewtonMemoryPair:
 
         # ---------- curvature pair ----------
         s = theta_new - self.theta
+        logger.info(
+            "model_step",
+            extra={
+                "step_norm": float(np.linalg.norm(s)),
+                "new_theta_norm": float(np.linalg.norm(theta_new)),
+            },
+        )
         g_new = self._grad_point(x, y)
         y_vec = g_new - g_old
 
@@ -80,6 +90,8 @@ class StreamNewtonMemoryPair:
         Remove the influence of observation (x, y).
         No raw data are stored internally; caller must supply x, y.
         """
+        logger.info("delete_called")
+
         if self.deletions_so_far >= self.K:
             raise RuntimeError("max_deletions budget exceeded")
 
@@ -99,6 +111,10 @@ class StreamNewtonMemoryPair:
             / self.eps_step
         )
         self.theta += np.random.normal(0.0, sigma, size=self.dim)
+        logger.info(
+            "delete_completed",
+            extra={"remaining_eps": self.eps_total - self.eps_spent},
+        )
 
         # ── book-keeping ────────────────────────────────────────────
         self.eps_spent        += self.eps_step
@@ -126,6 +142,8 @@ class StreamNewtonMemoryPair:
 # limited_memory_bfgs.py
 import numpy as np
 from typing import List
+import logging
+logger = logging.getLogger(__name__)
 
 def two_loop_recursion(g, S, Y, RHO, gamma=None):
     """Return p = –H_k^{-1} g (L-BFGS two-loop)."""
@@ -147,6 +165,10 @@ def two_loop_recursion(g, S, Y, RHO, gamma=None):
     for a, s, y, rho in zip(reversed(al), S, Y, RHO):
         b = rho * y.dot(r)
         r += s * (a - b)
+    logger.debug(
+        "lbfgs_direction_computed",
+        extra={"grad_norm": float(np.linalg.norm(g)), "mem_pairs": len(S)},
+    )
     return -r
 
 def add_pair(S, Y, RHO, s, y, m_max, eps=1e-10):
@@ -160,7 +182,18 @@ def add_pair(S, Y, RHO, s, y, m_max, eps=1e-10):
     ys = abs(y.dot(s))
     if ys < 1e-8:
         return          # skip the pair
-    S.append(s); Y.append(y); RHO.append(1.0 / ys)
+    s_new = s
+    y_new = y
+    logger.info(
+        "lbfgs_add_pair",
+        extra={
+            "s_norm": float(np.linalg.norm(s_new)),
+            "y_norm": float(np.linalg.norm(y_new)),
+            "rho": 1.0 / ys,
+            "memory_len": len(S) + 1 if len(S) < m_max else m_max,
+        },
+    )
+    S.append(s_new); Y.append(y_new); RHO.append(1.0 / ys)
 
 
 def remove_pair_at(S: List[np.ndarray],

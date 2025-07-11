@@ -1,0 +1,49 @@
+version: 1
+disable_existing_loggers: False
+
+formatters:
+  json:
+    "()": structlog.make_filtering_bound_logger
+    keep_exc_info: True
+    processors:
+      - structlog.processors.TimeStamper:
+          fmt: ISO
+      - structlog.processors.add_log_level
+      - structlog.processors.StackInfoRenderer
+      - structlog.processors.format_exc_info
+      - structlog.processors.JSONRenderer
+
+handlers:
+  events:
+    class: logging.handlers.RotatingFileHandler
+    formatter: json
+    filename: logs/current_run/events.jsonl
+    maxBytes: 5_000_000      # 5 MB each
+    backupCount: 5
+
+  warnings:
+    class: logging.handlers.RotatingFileHandler
+    formatter: json
+    filename: logs/current_run/warnings.jsonl
+    maxBytes: 2_000_000
+    backupCount: 3
+    level: WARNING
+
+  errors:
+    class: logging.handlers.RotatingFileHandler
+    formatter: json
+    filename: logs/current_run/errors.jsonl
+    maxBytes: 2_000_000
+    backupCount: 3
+    level: ERROR
+
+loggers:
+  # Inherit these handlers in every sub-module
+  "unlearning_simulations":
+    level: INFO
+    handlers: [events, warnings, errors]
+    propagate: False
+
+root:
+  level: WARNING
+  handlers: [warnings, errors]
