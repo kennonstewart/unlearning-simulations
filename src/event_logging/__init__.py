@@ -6,7 +6,8 @@ def init_logging():
     base_dir = os.path.join(os.path.dirname(__file__), "logs", run_id)
     os.makedirs(base_dir, exist_ok=True)
 
-    with open(os.path.join(os.path.dirname(__file__), "logging_config.yaml")) as f:
+    config_path = os.path.join(os.path.dirname(__file__), "config.yaml")
+    with open(config_path) as f:
         cfg = yaml.safe_load(f)
 
     # Replace placeholder path with the real run folder

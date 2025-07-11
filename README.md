@@ -10,6 +10,8 @@ Algorithm Implementation: Includes a Python implementation of an incremental For
 
 *Reproducible Environment:* Configured with a Dockerfile and devcontainer.json for one-click setup in GitHub Codespaces or local Docker.
 
+*Event-Based Logging:* Each run writes structured JSON events to `src/event_logging/logs/`, making it easy to visualize model adjustments in a dashboard.
+
 ## Repository Structure
 ```
 .

@@ -5,7 +5,7 @@ import os
 
 from memory_pair import StreamNewtonMemoryPair   # ← your class file
 
-from logging_setup import init_logging
+from event_logging import init_logging
 import logging
 
 log_dir = init_logging()
@@ -28,6 +28,7 @@ def run_single_simulation(seed: int):
     ▸ 3) compare θ to closed-form ridge retrain on the remaining points
     """
     np.random.seed(seed)
+    logger.info("simulation_run_start", extra={"seed": seed})
 
     # ---------------- hyper-params ----------------
     N_TOTAL, N_FEATURES  = 4500, 5
@@ -57,6 +58,7 @@ def run_single_simulation(seed: int):
     print(f"🚀  Training StreamNewtonMemoryPair with {N_TOTAL} points …")
     for idx in range(N_TOTAL):
         model.insert(X[idx], y[idx])
+    logger.info("initial_training_complete", extra={"samples": N_TOTAL})
     print("✅  Initial training complete.")
 
     # print model parameters
@@ -75,6 +77,8 @@ def run_single_simulation(seed: int):
     for idx in delete_ids:
         model.delete(X[idx], y[idx])     # one point per call
 
+    logger.info("deletion_phase_complete", extra={"deleted": N_DELETE})
+
     w_after_delete = model.theta.copy()
     print("✅  Deletion complete.")
     print(f"Model θ after deletion: {w_after_delete}")
@@ -92,7 +96,9 @@ def run_single_simulation(seed: int):
     # ------------ metric ------------
     error = np.linalg.norm(w_after_delete - w_star)
     norm  = np.linalg.norm(w_star)
-    return (error / norm) * 100 if norm != 0 else 0.0
+    rel_error = (error / norm) * 100 if norm != 0 else 0.0
+    logger.info("simulation_run_complete", extra={"relative_error": rel_error})
+    return rel_error
 
 # ---------------------------------------------------------------------
 if __name__ == "__main__":
@@ -115,6 +121,16 @@ if __name__ == "__main__":
     print("\n📊  Incremental Deletion vs. Closed-form Retraining")
     print(f"Average relative error: {mean_error:.2f}%")
     print(f"95% CI: [{ci_low:.2f}%, {ci_high:.2f}%]")
+
+    logger.info(
+        "all_simulations_complete",
+        extra={
+            "runs": N_SIMULATIONS,
+            "mean_error": mean_error,
+            "ci_low": ci_low,
+            "ci_high": ci_high,
+        },
+    )
 
     # ---------------- save artefacts ----------------
     results_dir = os.path.join(os.path.dirname(__file__), "results")
