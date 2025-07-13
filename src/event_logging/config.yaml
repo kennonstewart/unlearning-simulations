@@ -18,7 +18,7 @@ handlers:
     class: logging.handlers.RotatingFileHandler
     filename: logs/current_run/events.jsonl
     maxBytes: 5_000_000
-    backupCount: 25
+    backupCount: 1000
     level: DEBUG          # capture everything it receives
     formatter: json
 
@@ -27,7 +27,7 @@ handlers:
     class: logging.handlers.RotatingFileHandler
     filename: logs/current_run/errors.jsonl
     maxBytes: 5_000_000
-    backupCount: 25
+    backupCount: 200
     level: WARNING        # WARNING, ERROR, CRITICAL
     formatter: json
 
