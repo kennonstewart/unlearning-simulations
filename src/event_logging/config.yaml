@@ -40,6 +40,11 @@ loggers:
     handlers: [events]                # always land in events.jsonl
     propagate: True                   # bubble up to root as well
 
+  "simulation":
+    level: DEBUG
+    handlers: [events]
+    propagate: True
+
 # --------------------------------
 # 4️⃣ Root logger (fallback)
 # --------------------------------
