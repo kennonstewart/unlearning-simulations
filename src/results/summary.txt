@@ -1,4 +1,0 @@
---- StreamNewtonMemoryPair Simulation ---
-Simulations: 500
-Mean relative error: 1.69%
-95% CI: [1.60%, 1.77%]
